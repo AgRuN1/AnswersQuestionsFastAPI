@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, Query, APIRouter
+from fastapi import Depends, APIRouter
 
 from app.repositories.answer_repository import AnswerRepository
 from app.schemas.question import QuestionSchema

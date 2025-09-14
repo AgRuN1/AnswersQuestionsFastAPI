@@ -1,4 +1,6 @@
 import pytest
+import pytest_asyncio
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
@@ -16,19 +18,46 @@ engine = create_async_engine(
 testingSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
-@pytest.fixture(scope="function")
-def db_session():
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def remove_data():
+    session = testingSessionLocal()
+    await session.execute(text('''
+        create table questions
+        (
+            id integer primary key autoincrement,
+            text varchar not null,
+            created_at timestamp not null
+        );
+    '''))
+    await session.execute(text('''
+        create table answers
+        (
+            id integer primary key autoincrement,
+            text varchar not null,
+            user_id uuid not null,
+            question_id integer not null
+                references questions
+                    on delete cascade,
+            created_at  timestamp not null
+        );
+    '''))
+    await session.commit()
+    yield 1
+    await session.execute(text('DROP TABLE questions'))
+    await session.execute(text('DROP TABLE answers'))
+    await session.commit()
+    await session.close()
+
+@pytest_asyncio.fixture(scope="function")
+async def db_session():
     session = testingSessionLocal()
     yield session
-    session.close()
+    await session.close()
 
 @pytest.fixture(scope="function")
 def test_client(db_session):
     def override_get_db():
-        try:
-            yield db_session
-        finally:
-            db_session.close()
+        yield db_session
 
     app.dependency_overrides[get_database_session] = override_get_db
     with TestClient(app) as test_client:
